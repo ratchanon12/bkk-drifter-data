@@ -5,6 +5,11 @@ import pymysql
 from dotenv import load_dotenv
 
 def process_retention_episode():
+    """
+    Processes retention episodes from drifters' tracking data stored in a MySQL database.
+    It calculates various metrics such as total active time, retention time, and transport time
+    for each tracker ID, and outputs the results to CSV files.
+    """
 
     load_dotenv()
     # Establish a connection to the MySQL database
@@ -48,7 +53,7 @@ def process_retention_episode():
         # Create a DataFrame from the fetched data
         df = pd.DataFrame(data, columns=column_names)
 
-        # iterate through each row and select
+        # Calculate 1-hour moving average of velocity for each data point
         acc_time = 0
         df['1hrMovingAvg'] = 0
         for ind in df.index:
@@ -63,10 +68,12 @@ def process_retention_episode():
                 df['1hrMovingAvg'][ind] = vel_sum/counter
             acc_time = 0
 
+        # Determine retention episodes based on 1-hour moving average velocity
         df['retention_code'] = np.where(df['1hrMovingAvg'] < 0.1, 1, 0)
         df['retention_time_days'] = None
         df['retention_time_hours'] = None
 
+        # Calculate retention time in days and hours
         retain = 0
         retain_time = 0
         retain_count = 0
@@ -93,13 +100,11 @@ def process_retention_episode():
                     retain_time = 0
                     retain = 0
 
-
-
-        # Summarize the retention points
-
+        # Handle missing data for the last second difference
         if pd.isnull(df['second_diff'].iloc[-1]):
             df['second_diff'].iloc[-1] = 0
 
+        # Compile and concatenate data for summary DataFrame
         data_to_concat = pd.DataFrame({
             'Tracker ID': [input_value],
             'Tracker Name': [tdf['name'][i]],
@@ -117,12 +122,12 @@ def process_retention_episode():
         sdf = pd.concat([sdf, data_to_concat], ignore_index=True)
 
         # Save the processed data to a CSV file
-        # Check if the folder exists, otherwise create it
         folder_path = 'drifter_data_output/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
         df.to_csv('drifter_data_output/'+input_value+'.csv', index=False)
 
+    # Calculate total transport time and save summary to CSV
     sdf['Total transport time (days)'] = sdf['Total active time (days)'] - sdf['Total retention time (days)']
     sdf.to_csv('drifter_data_output/retention_summary.csv', index=False)
     connection.close()
